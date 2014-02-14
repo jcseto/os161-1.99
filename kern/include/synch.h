@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
- *	The President and Fellows of Harvard College.
+ *      The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,7 @@
 
 
 #include <spinlock.h>
-
+#include "opt-A1.h"
 /*
  * Dijkstra-style semaphore.
  *
@@ -45,8 +45,8 @@
  */
 struct semaphore {
         char *sem_name;
-	struct wchan *sem_wchan;
-	struct spinlock sem_lock;
+        struct wchan *sem_wchan;
+        struct spinlock sem_lock;
         volatile int sem_count;
 };
 
@@ -74,6 +74,11 @@ void V(struct semaphore *);
  */
 struct lock {
         char *lk_name;
+        #if OPT_A1
+        struct wchan *lk_wchan;
+        struct thread *lk_holder;
+        struct spinlock lk_spinlock;
+        #endif
         // add what you need here
         // (don't forget to mark things volatile as needed)
 };
@@ -113,6 +118,10 @@ void lock_destroy(struct lock *);
 
 struct cv {
         char *cv_name;
+        #if OPT_A1
+        struct wchan *cv_wchan; 
+        struct spinlock cv_spinlock;
+        #endif
         // add what you need here
         // (don't forget to mark things volatile as needed)
 };
