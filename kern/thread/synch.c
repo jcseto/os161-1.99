@@ -254,6 +254,7 @@ lock_do_i_hold(struct lock *lock)
         // Write this
         #if OPT_A1
         KASSERT(lock != NULL);
+       
         if(curthread == lock->lk_holder) {
             return true;
         } 
@@ -332,8 +333,8 @@ cv_wait(struct cv *cv, struct lock *lock)
         KASSERT(lock_do_i_hold(lock));
         spinlock_acquire(&cv->cv_spinlock);
 
-        lock_release(lock);
         wchan_lock(cv->cv_wchan);
+        lock_release(lock);
 
         spinlock_release(&cv->cv_spinlock);
         wchan_sleep(cv->cv_wchan);

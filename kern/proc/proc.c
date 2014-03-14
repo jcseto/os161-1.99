@@ -46,10 +46,15 @@
 #include <proc.h>
 #include <current.h>
 #include <addrspace.h>
+#include <lib.h>
 #include <vnode.h>
 #include <vfs.h>
+#include <file.h>
+#include <array.h>
 #include <synch.h>
 #include <kern/fcntl.h>  
+#include "opt-A2.h"
+#include "opt-A3.h"
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -99,6 +104,17 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+	#if OPT_A2
+	//for some reason we cannot do vfs_open in here.
+	proc->filetable = array_create();
+	array_setsize(proc->filetable, 128);
+	for(int i = 0; i < 128; i++) {
+		array_set(proc->filetable, i, NULL);
+	}
+	proc->opencloselock = lock_create("opencloselock");
+
+	#endif
+
 #ifdef UW
 	proc->console = NULL;
 #endif // UW
@@ -123,6 +139,20 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
+
+	#if OPT_A2
+	lock_destroy(proc->opencloselock);
+	if(proc->filetable != NULL) {
+	for(int i = 127; i >= 0; i--) {
+		if(array_get(proc->filetable, i) != NULL) {
+			//kprintf("%d \n", i);
+			cleanupfile(array_get(proc->filetable, i));
+		}
+		array_remove(proc->filetable, i);
+	}
+	array_destroy(proc->filetable);
+	}
+#endif
 
 	/*
 	 * We don't take p_lock in here because we must have the only
@@ -168,6 +198,7 @@ proc_destroy(struct proc *proc)
 
 	kfree(proc->p_name);
 	kfree(proc);
+
 
 #ifdef UW
 	/* decrement the process count */
@@ -236,7 +267,42 @@ proc_create_runprogram(const char *name)
 	if (vfs_open(console_path,O_WRONLY,0,&(proc->console))) {
 	  panic("unable to open the console during process creation\n");
 	}
-	kfree(console_path);
+	
+
+	#if OPT_A2
+	//first 3 file descriptors are always stdin, stdout, and stderr, which all point to the console
+	int result;
+
+	struct vnode* stdinvnode;
+	console_path = kstrdup("con:");
+	result = vfs_open(console_path,O_RDWR,0,&(stdinvnode));
+	struct file* stdin;
+  	stdin = initfile(stdinvnode, O_RDWR, "stdin");
+  	KASSERT(stdin != NULL);
+  	KASSERT(result == 0);
+
+  	struct vnode* stdoutvnode;
+  	console_path = kstrdup("con:");
+	result = vfs_open(console_path,O_RDWR,0,&(stdoutvnode));
+	struct file* stdout;
+  	stdout = initfile(stdoutvnode, O_RDWR, "stdout");
+  	KASSERT(stdout != NULL);
+  	KASSERT(result == 0);
+
+  	struct vnode* stderrvnode;
+  	console_path = kstrdup("con:");
+	result = vfs_open(console_path,O_RDWR,0,&(stderrvnode));
+	struct file* stderr;
+  	stderr = initfile(stderrvnode, O_RDWR, "stderr");
+  	KASSERT(stderr != NULL);
+  	KASSERT(result == 0);
+
+  	kfree(console_path);
+
+	array_set(proc->filetable, 0, stdin);
+	array_set(proc->filetable, 1, stdout);
+	array_set(proc->filetable, 2, stderr);
+	#endif
 #endif // UW
 	  
 	/* VM fields */
