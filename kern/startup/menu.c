@@ -91,18 +91,22 @@ cmd_progthread(void *ptr, unsigned long nargs)
 	char progname[128];
 	int result;
 
+	//kprintf("1 arg %s 2 arg %s 3 arg %s", args[0], args[1], args[2]);
 	KASSERT(nargs >= 1);
 
-	if (nargs > 2) {
-		kprintf("Warning: argument passing from menu not supported\n");
-	}
+	//if (nargs > 2) {
+	//	kprintf("Warning: argument passing from menu not supported\n");
+	//}
 
 	/* Hope we fit. */
 	KASSERT(strlen(args[0]) < sizeof(progname));
 
 	strcpy(progname, args[0]);
 
-	result = runprogram(progname);
+	//nargs-1 to take away the program name argument.
+	result = runprogram(progname, nargs, args);
+	//result = runprogram(progname);
+
 	if (result) {
 		kprintf("Running program %s failed: %s\n", args[0],
 			strerror(result));

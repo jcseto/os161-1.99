@@ -44,6 +44,8 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+ #include <copyinout.h>
+ #include "opt-A2.h"
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -52,8 +54,86 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, int argc, char** argv)
 {
+	#if OPT_A2
+	struct addrspace *as;
+	struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+	int result;
+
+	//kprintf("%d  %s  %s", argc, argv[0], argv[1]);
+	/* Open the file. */
+	result = vfs_open(progname, O_RDONLY, 0, &v);
+	if (result) {
+		return result;
+	}
+
+	/* We should be a new process. */
+	KASSERT(curproc_getas() == NULL);
+
+	/* Create a new address space. */
+	as = as_create();
+	if (as ==NULL) {
+		vfs_close(v);
+		return ENOMEM;
+	}
+
+	/* Switch to it and activate it. */
+	curproc_setas(as);
+	as_activate();
+
+	/* Load the executable. */
+	result = load_elf(v, &entrypoint);
+	if (result) {
+		/* p_addrspace will go away when curproc is destroyed */
+		vfs_close(v);
+		return result;
+	}
+
+	/* Done with the file now. */
+	vfs_close(v);
+
+	/* Define the user stack in the address space */
+	result = as_define_stack(as, &stackptr);
+	if (result) {
+		/* p_addrspace will go away when curproc is destroyed */
+		return result;
+	}
+	size_t * lengthcopiedout;
+	//hopefully the function doesn't take 128 arguments.
+	stackptr = stackptr - 128;
+	char** newargv = (char**)stackptr;
+	(void) newargv;
+
+	for(int i = 0; i < argc; i++) {
+		/*stackptr must be divisible by 8. This formula ensures a address
+		  space that is divisible by 8, and just big enough to store
+		  the information needed.*/
+		int length = strlen(argv[i]) + (8 - (strlen(argv[i]) % 8)) + 8;
+		stackptr = stackptr - length;
+		copyoutstr(argv[i], (userptr_t) stackptr, length, lengthcopiedout);
+		newargv[i] = (char*)stackptr;
+
+	}
+	stackptr = stackptr - 8;
+	*(vaddr_t*) stackptr = '\0';
+	newargv[argc] = (char*)stackptr;
+
+	/* Warp to user mode. */
+	enter_new_process(argc /*argc*/, ((userptr_t) newargv)/*userspace addr of argv*/,
+			  stackptr, entrypoint);
+	
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned\n");
+	return EINVAL;
+	/*
+	*
+	* end of my implementation
+	*
+	*
+	*/
+	#else
 	struct addrspace *as;
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
@@ -104,5 +184,7 @@ runprogram(char *progname)
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
 	return EINVAL;
+	#endif
+
 }
 
